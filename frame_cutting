@@ -1,0 +1,138 @@
+%% ================== THAM SO HE THONG ==================
+fs = 96000;          % Tan so lay mau (Hz)
+Ns = 1024;  % So mau / bit
+Rb = fs / Ns;    % = 93.75 bps
+Tb = 1 / Rb;
+
+
+f0 = 12000;           % Tan so FSK bit 0
+f1 = 12800;           % Tan so FSK bit 1
+
+Lz = 10;             % So bit chen 0 (guard)
+
+header_bits = [1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0];
+footer_bits = [1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0];
+
+Lh = length(header_bits);
+Lf = length(footer_bits);
+
+t_bit = (0:Ns-1)/fs;
+
+% header_wave = [];
+% footer_wave = [];
+% 
+% for b = header_bits
+%     if b == 1
+%         s = sin(2*pi*f1*t_bit);
+%     else
+%         s = sin(2*pi*f0*t_bit);
+%     end
+%     header_wave = [header_wave s];
+% end
+header_wave = [];
+phase_h = 0;
+phase_f = 0;
+
+for b = header_bits
+    if b==0
+       f = f0;
+    else
+       f = f1;
+    end
+    for n = 1:Ns
+        phase_h = phase_h + 2*pi*f/fs;
+        header_wave(end+1) = sin(phase_h);
+    end
+end
+
+
+footer_wave = [];
+phase = 0;
+
+for b = footer_bits
+    if b == 0
+        f = f0;
+    else
+        f = f1;
+    end
+    for n = 1:Ns
+        phase_f = phase_f + 2*pi*f/fs;
+        footer_wave(end+1) = sin(phase_f);
+    end
+end
+
+
+%% ================== THU AM ==================
+% recObj = audiorecorder(fs,16,1);
+% disp('Dang thu...');
+% recordblocking(recObj,5);   % Thu 5 giay
+% disp('Ket thuc thu');
+% 
+% data_in = getaudiodata(recObj).';
+load("tx_sig.mat")
+data_in = tx_sig;
+%% ================== TUONG QUAN ==================
+R_h = conv(data_in, fliplr(header_wave), 'valid');
+R_f = conv(data_in, fliplr(footer_wave), 'valid');
+
+% Chuan hoa
+R_h = abs(R_h) / max(abs(R_h));
+R_f = abs(R_f) / max(abs(R_f));
+
+% Tim dinh
+[ph, ih] = max(R_h);
+[pf, ifo] = max(R_f);
+
+% Nguong tin cay
+thr = 0.6;
+if ph < thr || pf < thr || ifo <= ih
+    error('Khong phat hien duoc header / footer hop le');
+end
+
+
+
+%% ================== CAT FRAME ==================
+start_frame = ih;                            % Header bat dau
+end_frame   = ifo;% + length(footer_wave)-1;  % Het footer
+
+frame_full = data_in(start_frame:end_frame);
+figure;
+
+%% ================== FFT TIN HIEU SAU CAT ==================
+x = frame_full;
+Nfft = length(x);
+
+% FFT
+X = fft(x);
+Xmag = abs(X) / Nfft;
+
+% Lay pho 1 phia
+Xmag_1s = Xmag(1:floor(Nfft/2)+1);
+f = (0:floor(Nfft/2)) * fs / Nfft;
+subplot(4,1,1);
+plot(data_in);
+title('Tin hieu thu goc');
+xlabel('Sample'); ylabel('Amplitude');
+grid on;
+
+subplot(4,1,2);
+plot(R_h); hold on;
+plot(R_f);
+legend('Header corr','Footer corr');
+title('Tuong quan header & footer');
+xlabel('Sample'); ylabel('Normalized corr');
+grid on;
+
+subplot(4,1,3);
+plot(frame_full);
+title('Frame sau khi cat (Header + 0 + Data + 0)');
+xlabel('Sample'); ylabel('Amplitude');
+grid on;
+
+subplot(4,1,4);
+plot(f, Xmag_1s);
+title('Pho tan so (FFT) cua frame sau cat');
+xlabel('Tan so (Hz)');
+ylabel('|X(f)|');
+grid on;
+xlim([0 fs/2]);
