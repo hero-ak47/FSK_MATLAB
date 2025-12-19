@@ -1,0 +1,54 @@
+% nhan tin hieu sau cat voi bo iq
+
+fs = 96000;          % Tan so lay mau (Hz)
+Ns = 1024;  % So mau / bit
+Rb = fs / Ns;    % = 93.75 bps
+Tb = 1 / Rb;
+f0 = 12000;
+f1 = 12800;
+N = length(data_after_cut);
+n = 0:N-1;
+
+% data_after_cut la tin hieu sau khi cat duoc khung
+% tach data_after_cut thanh 2 nhanh
+data_in_F0 = data_after_cut; 
+data_in_F1 = data_after_cut;
+
+% tao bo ip
+I_F0 = cos(2*pi*f0*n/fs);
+Q_F0 = -sin(2*pi*f0*n/fs);   % dấu - cho downconversion chuẩn
+
+% nhan tin hieu voi bo iq
+x1_F0 = data_in_F0 .* I_F0;
+x2_F0 = data_in_F0 .* Q_F0;
+
+% tao bo loc thong thap dua x1, x2 ve baseband
+d = designfilt('lowpassfir', ...
+    'FilterOrder', 99, ...
+    'PassbandFrequency', 400, ...
+    'StopbandFrequency', 500, ...  
+    'SampleRate', fs);
+% loc x1, x2
+x1_F0_filtered = filter(d,x1_F0);
+x2_F0_filtered = filter(d,x2_F0);
+
+% dat ten bien cho vecto thuc
+real_0 = x1_F0_filtered;
+
+% nhan them phan ao j va dat ten bien cho vecto ao
+im_0 = x2_F0_filtered * 1i;
+
+% cong thuc va ao de tao vecto phuc
+y0 = real_0 + im_0;
+
+% thu gon vecto phuc, chon ra cac phan tu o vi tri Ns/2 + kN cua y1 lam phan tu cho y2
+
+Ns2 = floor(Ns/2);
+numBits = floor(length(y0)/Ns);
+
+y0_cutdown = zeros(1, numBits);
+for k = 1:numBits
+    idx = (k-1)*Ns + Ns2;  % cac vi tri o giua 1024 mau dai dien cho 1 bit
+    y0_cutdown(k) = y0(idx); % cac mau dai dien gan thanh cac phan tu cho y0_cutdown
+end
+disp(y0_cutdown);
