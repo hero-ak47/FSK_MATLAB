@@ -1,0 +1,120 @@
+%% ================== THAM SO HE THONG ==================
+fs = 48000;          % Tan so lay mau (Hz)
+Ns = 800;            % So mau / bit
+
+Rb = fs / Ns;             % Toc do bit
+Tb = 1  / Rb;
+
+
+f0 = 12000;           % Tan so FSK bit 0
+f1 = 12800;           % Tan so FSK bit 1
+
+Lz = 30;              % So bit chen 0 (guard)
+
+header_bits = [1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0];
+footer_bits = [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1];
+
+Lh = length(header_bits);
+Lf = length(footer_bits);
+
+t_bit = (0:Ns-1)/fs;
+
+
+header_wave = gen_wave(header_bits, f0, f1, fs, Ns);
+
+
+footer_wave = gen_wave(footer_bits, f0, f1, fs, Ns);
+
+
+
+
+%% ================== THU AM ==================
+recObj = audiorecorder(fs,16,1);
+disp('Dang thu...');
+recordblocking(recObj,5);   % Thu 5 giay
+disp('Ket thuc thu');
+
+data_in = getaudiodata(recObj).';
+% load("tx_sig.mat")
+% data_in = tx_sig;
+
+%% tạo bộ lọc thông dải
+d = designfilt('bandpassfir','FilterOrder',99, ...
+               'StopbandFrequency1',11000,'PassbandFrequency1',11500, ...
+               'PassbandFrequency2',13500,'StopbandFrequency2',14000, ...
+               'SampleRate',fs);
+data_after_filter = filter(d,data_in);
+%% ================== TUONG QUAN ==================
+R_h = conv(data_after_filter, fliplr(header_wave), 'valid');
+R_f = conv(data_after_filter, fliplr(footer_wave), 'valid');
+
+% Chuan hoa
+R_h = abs(R_h) / max(abs(R_h));
+R_f = abs(R_f) / max(abs(R_f));
+
+% Tim dinh
+[ph, ih] = max(R_h);
+[pf, ifo] = max(R_f);
+
+% Nguong tin cay
+thr = 0.6;
+if ph < thr || pf < thr || ifo <= ih
+    error('Khong phat hien duoc header / footer hop le');
+end
+
+%% ================== CAT FRAME ==================
+start_frame = ih - 10;                            % Header bat dau
+end_frame   = ifo + 10  ;%+ length(footer_wave)-1;  % Het footer
+
+frame_full = data_after_filter(start_frame:end_frame);
+
+xd0 = func_1(frame_full, fs, header_wave);
+xd1 = func_2(frame_full, fs, header_wave);
+
+Nb = floor(length(frame_full)/Ns);
+
+freq_est = zeros(1,Nb);
+for k = 1:Nb
+    seg = frame_full((k-1)*Ns+1 : k*Ns);
+    S = abs(fft(seg));
+    [~,idx] = max(S(1:Ns/2));
+    freq_est(k) = (idx-1)*fs/Ns;
+end
+
+plot(freq_est,'o-'); grid on;
+
+xd = xd0 - xd1;
+disp(xd);
+
+phi_sum = 0;
+i = 1;
+cnt = 0;
+
+ while i <= length(xd)
+    if real(xd(i)) > 0
+        phi_sum = phi_sum + angle(xd(i));
+        cnt = cnt + 1;
+    end
+   i = i + 1;
+end
+
+if cnt == 0
+    xr = xd;
+else
+    phi_avg = phi_sum / cnt;
+    xr = xd .* exp(1j*phi_avg);
+end
+disp(xr);
+
+k = 1;
+out = zeros(1,length(xd));
+
+while k <= length(xd) 
+    if real(xr(k)) >= 0
+        out(k) = 1;
+    else 
+        out(k) = 0;
+    end
+    k = k + 1;
+end
+disp(out);
