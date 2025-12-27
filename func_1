@@ -1,0 +1,115 @@
+function xd0 = func_1(frame, fs, header_wave)
+%====================================================
+% FSK receiver – F0 branch (ĐÃ SỬA)
+%====================================================
+
+%% ===== PARAMETERS =====
+Ns = 800;
+f0 = 12000;  % Tần số cho bit 0
+Lz = 30;
+
+% Header bits
+header_bits = [1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0];
+Lh = length(header_bits);
+
+% BPF cho f0
+[b,a] = butter(6, [11600 12400]/(fs/2), 'bandpass');
+header_wave_filtered = filtfilt(b,a, header_wave);
+frame_filt = filtfilt(b,a, frame);
+
+%% ===== IQ DEMOD (F0) =====
+
+
+% IQ cho frame
+N = length(frame_filt);
+n = 0:N-1;
+
+header_wave_filtered = [header_wave_filtered, zeros(1,N - length(header_wave_filtered))];
+
+I = cos(2*pi*f0*n/fs);
+Q = sin(2*pi*f0*n/fs);
+
+% nhân header với bộ IQ_h
+xI_header = header_wave_filtered .* I;
+xQ_header = header_wave_filtered .* Q;
+% nhân data với bộ IQ
+xI = frame_filt .* I;
+xQ = frame_filt .* Q;
+
+% LPF
+[c,d] = butter(6, 60/(fs/2), 'low');
+
+xI_header = filtfilt(c,d,xI_header);
+xQ_header = filtfilt(c,d,xQ_header);
+
+xI = filtfilt(c,d,xI);
+xQ = filtfilt(c,d,xQ);
+
+x = xI_header +1i*xQ_header;
+y0 = xI + 1i*xQ;
+
+%% ===== SYMBOL SAMPLING =====
+Ns2 = floor(Ns/2);
+numBits = floor(length(y0)/Ns);
+% lấy mẫu đại diện của header
+y0_samples_header = zeros(1,32);
+for k = 1:32
+    y0_samples_header(k) = x((k-1)*Ns + Ns2);
+end
+%lấy mẫu đại diện của data
+y0_samples = zeros(1, numBits);
+for k = 1:numBits
+    y0_samples(k) = y0((k-1)*Ns + Ns2);
+end
+
+%% ===== XÁC ĐỊNH CẤU TRÚC KHUNG =====
+% Giả sử cấu trúc: HEADER + ZEROS + DATA + ZEROS
+% header: Lh bits, zeros: Lz bits, data: Ld bits, zeros: Lz bits
+
+% Tổng số bits ước tính
+total_bits = numBits;
+
+% Tính Ld từ công thức: total_bits = Lh + Lz + Ld + Lz
+
+
+% Tách phần tử
+hr0 = y0_samples(1:Lh+Lz);      % Header + zeros
+yr0 = y0_samples(Lh+Lz+1:total_bits);  % Data + zeros
+Ld = length(yr0) - 30;
+
+
+
+%% ===== FFT EQUALIZATION =====
+
+% Đảm bảo cùng độ dài
+if length(hr0) > length(yr0)
+    l_max =  length(hr0);
+    yr0_eq = [yr0,zeros(1,length(hr0)- length(yr0))];
+    hr0_eq = hr0;
+else
+    l_max =  length(yr0);
+    hr0_eq = [hr0,zeros(1,length(yr0)- length(hr0))];
+    yr0_eq = yr0;
+end
+
+
+% Thêm zeros cho reference
+x_added_zeros = [y0_samples_header, zeros(1, l_max - 32)];
+
+% FFT equalization
+HP0 = fft(hr0_eq, l_max);      % header nhan
+XP = fft(x_added_zeros, l_max);% header co san
+
+eps0 = 1e-12;
+H0 = HP0 ./ (XP + eps0);
+%disp(H0);
+
+% Áp dụng cho data
+YD0 = fft(yr0_eq, l_max);
+XR0 = YD0 ./ (H0 + eps0);
+
+xr0 = ifft(XR0);
+
+%% ===== OUTPUT =====
+xd0 = xr0(1:Ld);
+end
