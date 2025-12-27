@@ -1,0 +1,16 @@
+function header_wave = gen_wave(header_bits, f0, f1, Fs, Ns)
+
+freq = (header_bits==1)*f1 + (header_bits==0)*f0;
+freq_vec = repelem(freq, Ns);
+
+N = length(freq_vec);
+phase = zeros(1,N);
+phase(1) = 2*pi*freq_vec(1)/Fs;
+
+for n = 2:N
+    phase(n) = phase(n-1) + 2*pi*freq_vec(n)/Fs;
+end
+
+phase = mod(phase, 2*pi);
+header_wave = sin(phase);
+end
