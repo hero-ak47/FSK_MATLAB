@@ -8,10 +8,10 @@ Ns = 800;
 f1 = 12800;  % Tần số cho bit 1
 Lz = 30;
 
-header_bits = [1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0];
+header_bits = [1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0];
 Lh = length(header_bits);
 
-[b,a] = butter(6, [12400 13200]/(fs/2), 'bandpass');
+[b,a] = butter(5, [12400 13200]/(fs/2), 'bandpass');
 header_wave_filtered = filtfilt(b,a, header_wave);
 frame_filt = filtfilt(b,a, frame);
 
@@ -21,18 +21,18 @@ frame_filt = filtfilt(b,a, frame);
 
 N = length(frame_filt);
 n = 0:N-1;
-header_wave_filtered = [header_wave_filtered, zeros(1,N - length(header_wave_filtered))];
+%header_wave_filtered = [header_wave_filtered, zeros(1,N - length(header_wave_filtered))];
 
 I = cos(2*pi*f1*n/fs);
 Q = sin(2*pi*f1*n/fs);
 
-xI_header = header_wave_filtered.* I;
-xQ_header = header_wave_filtered.* Q;
+xI_header = header_wave_filtered .* I(1:Lh*Ns);
+xQ_header = header_wave_filtered .* Q(1:Lh*Ns);
 
 xI = frame_filt .* I;
 xQ = frame_filt .* Q;
 
-[c,d] = butter(6, 60/(fs/2), 'low');
+[c,d] = butter(5, 60/(fs/2), 'low');
 
 xI_header = filtfilt(c,d,xI_header);
 xQ_header = filtfilt(c,d,xQ_header);
@@ -40,22 +40,27 @@ xQ_header = filtfilt(c,d,xQ_header);
 xI = filtfilt(c,d,xI);
 xQ = filtfilt(c,d,xQ);
 
-x = xI_header +1i*xQ_header;
-y1 = xI + 1i*xQ;
+x  = (xI_header.^2 + xQ_header.^2);
+y1 = (xI.^2 + xQ.^2);
+
 
 %% ===== SYMBOL SAMPLING =====
 Ns2 = floor(Ns/2);
-numBits = floor(length(y1)/Ns);
+count_bit = 0;
+while abs(length(y1) - count_bit*800) > 400
+     count_bit = count_bit+1;
+end
+numBits = count_bit;
 
 % lấy mẫu đại diện của header
-y1_samples_header = zeros(1,32);
-for k = 1:32
-    y1_samples_header(k) = x((k-1)*Ns + Ns2);
+y1_samples_header = zeros(1,Lh);
+for k1 = 1:Lh
+    y1_samples_header(k1) = x((k1-1)*Ns + Ns2);
 end
 
 y1_samples = zeros(1, numBits);
-for k = 1:numBits
-    y1_samples(k) = y1((k-1)*Ns + Ns2);
+for k2 = 1:numBits
+    y1_samples(k2) = y1((k2-1)*Ns + Ns2);
 end
 
 %% ===== XÁC ĐỊNH CẤU TRÚC KHUNG =====
@@ -68,7 +73,7 @@ total_bits = numBits;
 % Tách phần tử
 hr1 = y1_samples(1:Lh+Lz);      % Header + zeros
 yr1 = y1_samples(Lh+Lz+1:total_bits);  % Data + zeros
-Ld = length(yr1) - 30;
+Ld = length(yr1) - Lz;
 
 %% ===== FFT EQUALIZATION =====
 
@@ -79,27 +84,57 @@ if length(hr1) > length(yr1)
     hr1_eq = hr1;
 else
     l_max =  length(yr1);
-    hr1_eq = [hr0,zeros(1,length(yr1)- length(hr1))];
+    hr1_eq = [hr1,zeros(1,length(yr1)- length(hr1))];
     yr1_eq = yr1;
 end
 
 % Thêm zeros cho reference
-x_added_zeros = [y1_samples_header, zeros(1, l_max - 32)];
+x_added_zeros = [y1_samples_header, zeros(1, l_max - Lh)];
 
 % FFT equalization
 HP1 = fft(hr1_eq, l_max);      % header nhan
 XP = fft(x_added_zeros, l_max);% header co san
 
-eps1 = 1e-12;
+eps1 = 0;
 H1 = HP1 ./ (XP + eps1);
-%disp(H1);
+H1 = mean(H1);
+disp('H1 : '  );
+disp(H1);
 
 % Áp dụng cho data
 YD1 = fft(yr1_eq, l_max);
-XR1 = YD1 ./ (H1 + eps1);
+XR1 = YD1 / (H1 + eps1);
 
 xr1 = ifft(XR1);
 
 %% ===== OUTPUT =====
 xd1 = xr1(1:Ld);
+
+%% Xoay pha
+phi_sum = 0;
+i = 1;
+cnt = 0;
+
+ while i <= length(xd1)
+    if real(xd1(i)) > 0
+        phi_sum = phi_sum + angle(xd1(i));
+        cnt = cnt + 1;
+    end
+   i = i + 1;
+end
+
+if cnt == 0
+    xd1 = xd1;
+else
+    phi_avg = phi_sum / cnt;
+    xd1 = xd1 .* exp(1j*phi_avg);
+end
+%% ===== PLOT |xd1| (NĂNG LƯỢNG SYMBOL F1) =====
+% figure;
+% stem(1:length(xd1), real(xd1), 'filled');
+% xlabel('Symbol index');
+% ylabel('|xd1|');
+% title('Biên độ (năng lượng) nhánh F1 sau IFFT');
+% grid on;
+
 end
