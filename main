@@ -11,8 +11,8 @@ f1 = 12800;           % Tan so FSK bit 1
 
 Lz = 30;              % So bit chen 0 (guard)
 
-header_bits = [1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0];
-footer_bits = [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1];
+header_bits = [1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0];
+footer_bits = [1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0];
 
 Lh = length(header_bits);
 Lf = length(footer_bits);
@@ -31,19 +31,18 @@ footer_wave = gen_wave(footer_bits, f0, f1, fs, Ns);
 %% ================== THU AM ==================
 recObj = audiorecorder(fs,16,1);
 disp('Dang thu...');
-recordblocking(recObj,5);   % Thu 5 giay
+recordblocking(recObj,8);   % Thu 5 giay
 disp('Ket thuc thu');
 
 data_in = getaudiodata(recObj).';
 % load("tx_sig.mat")
 % data_in = tx_sig;
 
-%% tạo bộ lọc thông dải
-d = designfilt('bandpassfir','FilterOrder',99, ...
-               'StopbandFrequency1',11000,'PassbandFrequency1',11500, ...
-               'PassbandFrequency2',13500,'StopbandFrequency2',14000, ...
-               'SampleRate',fs);
-data_after_filter = filter(d,data_in);
+%% IIR Butterworth bandpass
+[b,a] = butter(5, [11500 13500]/(fs/2), 'bandpass');
+
+data_after_filter = filtfilt(b, a, data_in);
+
 %% ================== TUONG QUAN ==================
 R_h = conv(data_after_filter, fliplr(header_wave), 'valid');
 R_f = conv(data_after_filter, fliplr(footer_wave), 'valid');
@@ -63,54 +62,38 @@ if ph < thr || pf < thr || ifo <= ih
 end
 
 %% ================== CAT FRAME ==================
-start_frame = ih - 10;                            % Header bat dau
-end_frame   = ifo + 10  ;%+ length(footer_wave)-1;  % Het footer
+start_frame = ih ;                            % Header bat dau
+end_frame   = ifo - 1  ;%+ length(footer_wave)-1;  % Het footer
 
 frame_full = data_after_filter(start_frame:end_frame);
+disp('do dai frame thu duoc');
+disp(length(frame_full));
 
 xd0 = func_1(frame_full, fs, header_wave);
 xd1 = func_2(frame_full, fs, header_wave);
+disp('length data :');
+disp(length(xd1));
 
-Nb = floor(length(frame_full)/Ns);
+% Nb = floor(length(frame_full)/Ns);
+% 
+% freq_est = zeros(1,Nb);
+% for k = 1:Nb
+%     seg = frame_full((k-1)*Ns+1 : k*Ns);
+%     S = abs(fft(seg));
+%     [~,idx] = max(S(1:Ns/2));
+%     freq_est(k) = (idx-1)*fs/Ns;
+% end
 
-freq_est = zeros(1,Nb);
-for k = 1:Nb
-    seg = frame_full((k-1)*Ns+1 : k*Ns);
-    S = abs(fft(seg));
-    [~,idx] = max(S(1:Ns/2));
-    freq_est(k) = (idx-1)*fs/Ns;
-end
+% plot(freq_est,'o-'); grid on;
 
-plot(freq_est,'o-'); grid on;
+ xd = xd1 - xd0;
 
-xd = xd0 - xd1;
-disp(xd);
-
-phi_sum = 0;
-i = 1;
-cnt = 0;
-
- while i <= length(xd)
-    if real(xd(i)) > 0
-        phi_sum = phi_sum + angle(xd(i));
-        cnt = cnt + 1;
-    end
-   i = i + 1;
-end
-
-if cnt == 0
-    xr = xd;
-else
-    phi_avg = phi_sum / cnt;
-    xr = xd .* exp(1j*phi_avg);
-end
-disp(xr);
 
 k = 1;
-out = zeros(1,length(xd));
+out = zeros(1,length(xd1));
 
 while k <= length(xd) 
-    if real(xr(k)) >= 0
+    if real(xd(k)) >= 0
         out(k) = 1;
     else 
         out(k) = 0;
@@ -118,3 +101,13 @@ while k <= length(xd)
     k = k + 1;
 end
 disp(out);
+bits = out(:).';              % đảm bảo là row vector
+bits = bits(1:floor(length(bits)/8)*8);  % cắt bội 8
+
+bytes = reshape(bits, 8, []).';   % mỗi hàng = 1 byte
+dec   = bin2dec(char(bytes + '0'));
+text  = char(dec);
+
+% Hiển thị trên cùng 1 dòng
+disp('ket qua giai dieu che : ');
+fprintf('%s', text);
