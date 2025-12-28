@@ -1,14 +1,18 @@
-Fs = 96000;
+Fs = 48000;
 f0 = 12000;
 f1 = 12800;
 
-Ns = 1024;        % so mau / bit
+Ns = 800;        % so mau / bit
 
+s = 'I LOVE YOU';
+data_bits = reshape(dec2bin(s,8).'-'0',1,[]);
 header_bits = [1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0];
-data_bits   = [1 1 0 0 1 0 1 1 0 1 0 0 1 0 0 0 0 0 0 1 1 1 0 1 1 0 0 1 0 0 1 1];
-footer_bits = [1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0];   % đảo header cho chắc
+%data_bits   = [1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1];
+%data_bits   = [0 0 0 0 0 0 0 0];
+%data_bits   = [0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1];
+footer_bits = [1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0 1 1 1 1 0 0 0 0];
 
-Lz = 10;                    % so bit chèn 0
+Lz = 30;                    % so bit chèn 0
 zero_guard = zeros(1, Lz);
 
 silence_time = 0.5;        % 0.5s silence trước & sau
@@ -46,30 +50,37 @@ phase = mod(phase, 2*pi);
 sig_frame = sin(phase);
 
 tx_sig = [silence_samp sig_frame silence_samp];
+
+SNR_dB = 7;
+tx_sig_noisy = awgn(tx_sig, SNR_dB, 'measured');
+
 % ================= FFT =================
-Nfft = length(tx_sig);
-X = fft(tx_sig);
+Nfft = length(tx_sig_noisy);
+X = fft(tx_sig_noisy);
 Xmag = abs(X)/Nfft;
 Xmag_1s = Xmag(1:floor(Nfft/2)+1);
 f = (0:floor(Nfft/2)) * Fs / Nfft;
 
-t = (0:length(tx_sig)-1)/Fs;
+t = (0:length(tx_sig_noisy)-1)/Fs;
 
-figure('Name','FSK TX for Frame Detection');
-
-subplot(2,1,1)
-plot(t, tx_sig);
-xlabel('Time (s)');
-ylabel('Amplitude');
-title('FSK TX: silence | header | 0 | data | 0 | footer | silence');
-grid on;
-
-subplot(2,1,2)
-plot(f, Xmag_1s);
-xlabel('Frequency (Hz)');
-ylabel('|X(f)|');
-title('Pho tan so (FFT)');
-grid on;
-xlim([10000 14000]);   % zoom vùng FSK
-audiowrite("test_detect3.wav",tx_sig,Fs);
+% figure('Name','FSK TX for Frame Detection');
+% 
+% subplot(2,1,1)
+% plot(t, tx_sig_noisy);
+% xlabel('Time (s)');
+% ylabel('Amplitude');
+% title('FSK TX: silence | header | 0 | data | 0 | footer | silence');
+% grid on;
+% 
+% subplot(2,1,2)
+% plot(f, Xmag_1s);
+% xlabel('Frequency (Hz)');
+% ylabel('|X(f)|');
+% title('Pho tan so (FFT)');
+% grid on;
+% xlim([10000 14000]);   % zoom vùng FSK
+%save("tx_sig.mat",'tx_sig');
+audiowrite('test06.wav', tx_sig, Fs);
+disp(data_bits)
+sound(tx_sig, fs);
 
