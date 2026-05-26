@@ -88,6 +88,26 @@ disp(length(xd1));
 
  xd = xd1 - xd0;
 
+%% Xoay pha
+phi_sum = 0;
+i = 1;
+cnt = 0;
+
+ while i <= length(xd0)
+    if real(xd(i)) > 0
+        phi_sum = phi_sum + angle(xd(i));
+        cnt = cnt + 1;
+    end
+   i = i + 1;
+end
+
+if cnt == 0
+    xd = xd;
+else
+    phi_avg = phi_sum / cnt;
+    xd = xd .* exp(-1j*phi_avg);
+end
+
 
 k = 1;
 out = zeros(1,length(xd1));
