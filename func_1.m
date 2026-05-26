@@ -126,25 +126,8 @@ xr0 = ifft(XR0);
 
 %% ===== OUTPUT =====
 xd0 = xr0(1:Ld);
-%% Xoay pha
-phi_sum = 0;
-i = 1;
-cnt = 0;
 
- while i <= length(xd0)
-    if real(xd0(i)) > 0
-        phi_sum = phi_sum + angle(xd0(i));
-        cnt = cnt + 1;
-    end
-   i = i + 1;
-end
 
-if cnt == 0
-    xd0 = xd0;
-else
-    phi_avg = phi_sum / cnt;
-    xd0 = xd0 .* exp(1j*phi_avg);
-end
 
 %% ===== PLOT |xd0| (NĂNG LƯỢNG SYMBOL F1) =====
 % figure;
